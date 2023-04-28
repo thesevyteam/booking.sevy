@@ -16,11 +16,12 @@ const {
   updateBooking,
   deleteBooking,
 } = require("../contollers");
+const { multerUpload } = require("../services");
 
 router
   .get("/services", authenticateJWT, getServices)
   .get("/services/:id", authenticateJWT, getService)
-  .post("/services", authenticateJWT, createService)
+  .post("/services", authenticateJWT, multerUpload, createService)
   .put("/services/:id", authenticateJWT, updateService)
   .delete("/services/:id", authenticateJWT, deleteService)
   .get("/bookings", authenticateJWT, getBookings)

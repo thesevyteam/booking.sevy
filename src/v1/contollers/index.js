@@ -1,6 +1,22 @@
 exports.getServices = async (req, res) => {
   try {
-    const [rows] = await req.db.query("SELECT * FROM services");
+    const [rows] = await req.db.query(
+      "SELECT * FROM services WHERE geohash6 = ?",
+      [req.query.geohash6]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.log(err);
+    res.sendStatus(500);
+  }
+};
+
+exports.getUserServices = async (req, res) => {
+  try {
+    const [rows] = await req.db.query(
+      "SELECT * FROM services WHERE provider_uid = ?",
+      [req.query.uid]
+    );
     res.json(rows);
   } catch (err) {
     console.log(err);
@@ -24,16 +40,55 @@ exports.getService = async (req, res) => {
 };
 
 exports.createService = async (req, res) => {
+  const { category, serviceName, description, duration, price } = req.body;
   try {
+    console.log(category, serviceName, description, duration, price);
+    const _images = req.files.service_images.map((image) => image.path);
+    const [user] = await req.db.query("SELECT * FROM users WHERE uid = ?", [
+      req.user.uid,
+    ]);
+    if (user.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    const { geohash4, geohash5, geohash6, city, uid } = user[0];
     const [result] = await req.db.query(
-      "INSERT INTO services (name, description, price) VALUES (?, ?, ?)",
-      [req.body.name, req.body.description, req.body.price]
+      "INSERT INTO services (category, provider_uid, name, duration, description, price, city, geohash4, geohash5, geohash6, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        category.toLowerCase(),
+        uid,
+        serviceName,
+        parseInt(duration),
+        description,
+        parseInt(price),
+        city,
+        geohash4,
+        geohash5,
+        geohash6,
+        JSON.stringify(_images),
+      ]
     );
-    const [service] = await req.db.query(
-      "SELECT * FROM services WHERE id = ?",
-      [result.insertId]
-    );
-    res.status(201).json(service[0]);
+    // const [service] = await req.db.query(
+    //   "SELECT * FROM services WHERE id = ?",
+    //   [result.insertId]
+    // );
+    // res.status(201).json(service[0]);
+    res.status(201).json({
+      message: "Service created successfully",
+      data: {
+        id: result.insertId,
+        category: category.toLowerCase(),
+        provider_uid: uid,
+        name: serviceName,
+        duration: parseInt(duration),
+        description,
+        price: parseInt(price),
+        city,
+        geohash4,
+        geohash5,
+        geohash6,
+        images: JSON.stringify(_images),
+      },
+    });
   } catch (err) {
     console.log(err);
     res.sendStatus(500);
