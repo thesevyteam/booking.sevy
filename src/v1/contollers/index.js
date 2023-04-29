@@ -2,9 +2,57 @@ exports.getServices = async (req, res) => {
   try {
     const [rows] = await req.db.query(
       "SELECT * FROM services WHERE geohash6 = ?",
-      [req.query.geohash6]
+      [req.query.geohash]
     );
-    res.json(rows);
+    res.json({
+      message: "Services fetched successfully",
+      data: rows,
+    });
+  } catch (err) {
+    console.log(err);
+    res.sendStatus(500);
+  }
+};
+
+exports.getTopServices = async (req, res) => {
+  try {
+    let rows;
+
+    const query = `
+  SELECT services.*, users.first_name, users.last_name, users.profile_picture, users.geohash4, users.geohash5, users.geohash6, users.city
+  FROM services
+  INNER JOIN users ON services.provider_uid = users.uid
+  WHERE services.provider_uid != ? AND %GEOHASH_COLUMN% = ?
+  ORDER BY rating DESC
+  LIMIT 10
+`;
+
+    const geohash6Query = query.replace("%GEOHASH_COLUMN%", "users.geohash6");
+    [rows] = await req.db.query(geohash6Query, [
+      req.user.uid,
+      req.query.geohash.substring(0, 6),
+    ]);
+
+    if (rows.length < 10) {
+      const geohash5Query = query.replace("%GEOHASH_COLUMN%", "users.geohash5");
+      [rows] = await req.db.query(geohash5Query, [
+        req.user.uid,
+        req.query.geohash.substring(0, 5),
+      ]);
+    }
+
+    if (rows.length < 10) {
+      const geohash4Query = query.replace("%GEOHASH_COLUMN%", "users.geohash4");
+      [rows] = await req.db.query(geohash4Query, [
+        req.user.uid,
+        req.query.geohash.substring(0, 4),
+      ]);
+    }
+
+    res.json({
+      message: "Services fetched successfully",
+      data: rows,
+    });
   } catch (err) {
     console.log(err);
     res.sendStatus(500);
@@ -14,10 +62,16 @@ exports.getServices = async (req, res) => {
 exports.getUserServices = async (req, res) => {
   try {
     const [rows] = await req.db.query(
-      "SELECT * FROM services WHERE provider_uid = ?",
-      [req.query.uid]
+      `SELECT services.*, users.first_name, users.last_name, users.profile_picture, users.geohash4, users.geohash5, users.geohash6, users.city
+       FROM services
+       INNER JOIN users ON services.provider_uid = users.uid
+       WHERE provider_uid = ?`,
+      [req.params.uid]
     );
-    res.json(rows);
+    res.json({
+      message: "Services fetched successfully",
+      data: rows,
+    });
   } catch (err) {
     console.log(err);
     res.sendStatus(500);
@@ -26,13 +80,20 @@ exports.getUserServices = async (req, res) => {
 
 exports.getService = async (req, res) => {
   try {
-    const [rows] = await req.db.query("SELECT * FROM services WHERE id = ?", [
-      req.params.id,
-    ]);
+    const [rows] = await req.db.query(
+      `SELECT services.*, users.first_name, users.last_name, users.profile_picture, users.geohash4, users.geohash5, users.geohash6, users.city
+       FROM services
+       INNER JOIN users ON services.provider_uid = users.uid
+       WHERE services.id = ?`,
+      [req.params.id]
+    );
     if (rows.length === 0) {
       return res.status(404).json({ error: "Service not found" });
     }
-    res.json(rows[0]);
+    res.json({
+      message: "Service fetched successfully",
+      data: rows[0],
+    });
   } catch (err) {
     console.log(err);
     res.sendStatus(500);
@@ -42,36 +103,20 @@ exports.getService = async (req, res) => {
 exports.createService = async (req, res) => {
   const { category, serviceName, description, duration, price } = req.body;
   try {
-    console.log(category, serviceName, description, duration, price);
     const _images = req.files.service_images.map((image) => image.path);
-    const [user] = await req.db.query("SELECT * FROM users WHERE uid = ?", [
-      req.user.uid,
-    ]);
-    if (user.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    const { geohash4, geohash5, geohash6, city, uid } = user[0];
+    const { uid } = req.user;
     const [result] = await req.db.query(
-      "INSERT INTO services (category, provider_uid, name, duration, description, price, city, geohash4, geohash5, geohash6, images) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO services (category, provider_uid, name, duration, description, price, images) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [
         category.toLowerCase(),
-        uid,
+        req.user.uid,
         serviceName,
         parseInt(duration),
         description,
         parseInt(price),
-        city,
-        geohash4,
-        geohash5,
-        geohash6,
         JSON.stringify(_images),
       ]
     );
-    // const [service] = await req.db.query(
-    //   "SELECT * FROM services WHERE id = ?",
-    //   [result.insertId]
-    // );
-    // res.status(201).json(service[0]);
     res.status(201).json({
       message: "Service created successfully",
       data: {
@@ -82,10 +127,6 @@ exports.createService = async (req, res) => {
         duration: parseInt(duration),
         description,
         price: parseInt(price),
-        city,
-        geohash4,
-        geohash5,
-        geohash6,
         images: JSON.stringify(_images),
       },
     });
